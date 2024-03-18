@@ -72,4 +72,23 @@ function Parser.parse(content)
     return projects
 end
 
+function Parser.toMarkdown(projects)
+    local markdownContent = ""
+    for _, project in ipairs(projects) do
+        markdownContent = markdownContent .. "## " .. project.name .. "\n"
+        for _, productBacklog in ipairs(project.productBacklogs) do
+            markdownContent = markdownContent .. "### " .. productBacklog.name .. "\n"
+            for _, scrumBacklog in ipairs(productBacklog.scrumBacklogs) do
+                local statusMark = scrumBacklog.status == "completed" and "x" or (scrumBacklog.status == "in_progress" and ">" or (scrumBacklog.status == "review" and "r" or " "))
+                markdownContent = markdownContent .. "- [" .. statusMark .. "] " .. scrumBacklog.name .. " @" .. (scrumBacklog.deadline or "") .. "\n"
+                for _, task in ipairs(scrumBacklog.tasks) do
+                    local taskStatusMark = task.status == "completed" and "x" or (task.status == "in_progress" and ">" or (task.status == "review" and "r" or " "))
+                    markdownContent = markdownContent .. "    - [" .. taskStatusMark .. "] " .. task.name .. "\n"
+                end
+            end
+        end
+    end
+    return markdownContent
+end
+
 return Parser

@@ -1,45 +1,52 @@
 -- tests/state_manager_spec.lua
-describe("State Manager", function()
-    local state_manager = require("nvim-todo.core.state_manager")
+package.path = package.path .. ";./lua/?.lua"
 
-    -- テスト用のTodoファイルパス
-    local test_file_path = "./tests/test_todo.md"
+describe("State Manager", function()
+    local StateManager = require("nvim-todo.core.state_manager") -- 適切なパスに置き換えてください。
+    local projects = {}
 
     before_each(function()
-        -- テスト用のTodoファイルを準備
-        local test_content = [[
-- [ ] Task 1
-- [x] Task 2
-- [ ] Task 3
-]]
-        local file = io.open(test_file_path, "w")
-        file:write(test_content)
-        file:close()
+        -- 各テストの前にプロジェクト構造をリセット
+        projects = {}
+        StateManager.addProject(projects, "Project 1")
+        StateManager.addProductBacklog(projects, "Project 1", "Product Backlog 1")
+        StateManager.addScrumBacklog(projects, "Project 1", "Product Backlog 1", "Scrum Backlog 1", "20240101", "not_started")
+        StateManager.addTask(projects, "Project 1", "Product Backlog 1", "Scrum Backlog 1", "Task 1", "not_started")
     end)
 
-    after_each(function()
-        -- テスト用のファイルを削除
-        os.remove(test_file_path)
+    it("adds entities correctly", function()
+        assert.are.equal("Project 1", projects[1].name)
+        assert.are.equal("Product Backlog 1", projects[1].productBacklogs[1].name)
+        assert.are.equal("Scrum Backlog 1", projects[1].productBacklogs[1].scrumBacklogs[1].name)
+        assert.are.equal("Task 1", projects[1].productBacklogs[1].scrumBacklogs[1].tasks[1].name)
     end)
 
-    it("updates task status correctly", function()
-        -- Task 1の状態を'completed'に更新
-        local updated = state_manager.update_task_status(test_file_path, "Task 1", "completed")
-        assert.is_true(updated)
+    it("removes entities correctly", function()
+        StateManager.removeTask(projects, "Project 1", "Product Backlog 1", "Scrum Backlog 1", "Task 1")
+        assert.are.equal(0, #projects[1].productBacklogs[1].scrumBacklogs[1].tasks)
+        StateManager.removeScrumBacklog(projects, "Project 1", "Product Backlog 1", "Scrum Backlog 1")
+        assert.are.equal(0, #projects[1].productBacklogs[1].scrumBacklogs)
+        StateManager.removeProductBacklog(projects, "Project 1", "Product Backlog 1")
+        assert.are.equal(0, #projects[1].productBacklogs)
+        StateManager.removeProject(projects, "Project 1")
+        assert.are.equal(0, #projects)
+    end)
 
-        -- ファイルを読み込み、更新を確認
-        local file = io.open(test_file_path, "r")
-        local content = file:read("*all")
-        file:close()
+    it("updates entities correctly", function()
+        StateManager.updateScrumBacklog(projects, "Project 1", "Product Backlog 1", "Scrum Backlog 1", "in_progress", "20240202")
+        local scrumBacklog = projects[1].productBacklogs[1].scrumBacklogs[1]
+        assert.are.equal("in_progress", scrumBacklog.status)
+        assert.are.equal("20240202", scrumBacklog.deadline)
 
-        assert.matches("- %[x%] Task 1", content)
+        StateManager.updateTask(projects, "Project 1", "Product Backlog 1", "Scrum Backlog 1", "Task 1", "completed")
+        local task = projects[1].productBacklogs[1].scrumBacklogs[1].tasks[1]
+        assert.are.equal("completed", task.status)
     end)
 
     it("filters tasks by status correctly", function()
-        -- 状態が'pending'のタスクをフィルタリング
-        local pending_tasks = state_manager.filter_tasks_by_status(test_file_path, "pending")
-        assert.are.equal(2, #pending_tasks)
-        assert.are.equal("Task 1", pending_tasks[1].name)
-        assert.are.equal("Task 3", pending_tasks[2].name)
+        StateManager.addTask(projects, "Project 1", "Product Backlog 1", "Scrum Backlog 1", "Task 2", "completed")
+        local completedTasks = StateManager.filterTasksByStatus(projects, "completed")
+        assert.are.equal(1, #completedTasks)
+        assert.are.equal("Task 2", completedTasks[1].name)
     end)
 end)
