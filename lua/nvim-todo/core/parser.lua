@@ -1,33 +1,77 @@
--- nvim-todo/lua/nvim-todo/core/parser.lua
-local M = {}
+-- データ構造の定義
+local Project = {}
+Project.__index = Project
+function Project:new(name)
+    return setmetatable({name = name, productBacklogs = {}}, Project)
+end
 
--- Markdownのタスク項目を解析する正規表現パターン
-local task_pattern = '(%s*)[-*]%s*%[(%s?)(x?)(%s?)%]%s+(.+)'
+local ProductBacklog = {}
+ProductBacklog.__index = ProductBacklog
+function ProductBacklog:new(name)
+    return setmetatable({name = name, scrumBacklogs = {}}, ProductBacklog)
+end
 
--- Markdownファイルからタスクを解析してリストとして返す
-function M.parse_todo_file(filepath)
-    local tasks = {}
-    local lines = vim.fn.readfile(filepath)
-    
-    for _, line in ipairs(lines) do
-        -- 各行を解析してタスクの情報を取得
-        for indent, pre, checked, post, description in string.gmatch(line, task_pattern) do
-            local task = {
-                indent = #indent, -- インデントの深さ
-                status = (checked ~= '' and 'completed') or 'pending', -- タスクの状態
-                description = description, -- タスクの説明
-            }
-            table.insert(tasks, task)
+local ScrumBacklog = {}
+ScrumBacklog.__index = ScrumBacklog
+function ScrumBacklog:new(name, deadline, status)
+    return setmetatable({name = name, deadline = deadline, status = status, tasks = {}}, ScrumBacklog)
+end
+
+function ScrumBacklog:addTask(task)
+    table.insert(self.tasks, task)
+end
+
+local Task = {}
+Task.__index = Task
+function Task:new(name, status)
+    return setmetatable({name = name, status = status}, Task)
+end
+
+-- パーサーモジュールの定義
+local Parser = {}
+
+-- ステータス判定関数
+function Parser.determineStatus(statusMark)
+    if statusMark == " " then return "not_started"
+    elseif statusMark == ">" then return "in_progress"
+    elseif statusMark == "r" then return "review"
+    elseif statusMark == "x" then return "completed"
+    else return "unknown"
+    end
+end
+
+-- Markdownの解析関数
+function Parser.parse(content)
+    local project = Project:new("Unnamed Project")
+    local currentProductBacklog
+    local currentScrumBacklog
+
+    for line in content:gmatch("[^\r\n]+") do
+        if line:match("^##[^#]") then
+            project.name = line:match("^##%s*(.+)")
+        elseif line:match("^###[^#]") then
+            local name = line:match("^###%s*(.+)")
+            currentProductBacklog = ProductBacklog:new(name)
+            table.insert(project.productBacklogs, currentProductBacklog)
+        elseif line:match("^%-%s*%[.-%]%s+.+") and not line:match("^%s") then
+            local statusMark, rest = line:match("^%-%s*%[(.-)%]%s*(.+)")
+            local name, deadline = rest:match("^(.-)%s*@(%d%d%d%d%d%d%d%d)$")
+            local status = Parser.determineStatus(statusMark)
+            currentScrumBacklog = ScrumBacklog:new(name, deadline, status)
+            if currentProductBacklog then
+                table.insert(currentProductBacklog.scrumBacklogs, currentScrumBacklog)
+            end
+        elseif line:match("^%s+%-%s*%[.-%]%s+.+") then
+            local statusMark, name = line:match("^%s+%-%s*%[(.-)%]%s*(.+)")
+            local status = Parser.determineStatus(statusMark)
+            local task = Task:new(name, status)
+            if currentScrumBacklog then
+                currentScrumBacklog:addTask(task)
+            end
         end
     end
-    
-    return tasks
+
+    return project
 end
 
--- タスクの状態を更新する関数（例: 未完了から完了へ）
--- 実際のファイル更新処理は省略
-function M.update_task_status(filepath, line_number, new_status)
-    -- ここにファイルの特定行を更新するロジックを実装
-end
-
-return M
+return Parser
