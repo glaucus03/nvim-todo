@@ -40,38 +40,36 @@ function Parser.determineStatus(statusMark)
     end
 end
 
--- Markdownの解析関数
 function Parser.parse(content)
-    local project = Project:new("Unnamed Project")
+    local projects = {}
+    local currentProject
     local currentProductBacklog
     local currentScrumBacklog
 
     for line in content:gmatch("[^\r\n]+") do
         if line:match("^##[^#]") then
-            project.name = line:match("^##%s*(.+)")
-        elseif line:match("^###[^#]") then
-            local name = line:match("^###%s*(.+)")
-            currentProductBacklog = ProductBacklog:new(name)
-            table.insert(project.productBacklogs, currentProductBacklog)
-        elseif line:match("^%-%s*%[.-%]%s+.+") and not line:match("^%s") then
+            local projectName = line:match("^##%s*(.+)")
+            currentProject = Project:new(projectName)
+            table.insert(projects, currentProject)
+        elseif currentProject and line:match("^###[^#]") then
+            local productBacklogName = line:match("^###%s*(.+)")
+            currentProductBacklog = ProductBacklog:new(productBacklogName)
+            table.insert(currentProject.productBacklogs, currentProductBacklog)  -- 正しく関連付け
+        elseif currentProductBacklog and line:match("^%-%s*%[.-%]%s+.+") and not line:match("^%s") then
             local statusMark, rest = line:match("^%-%s*%[(.-)%]%s*(.+)")
             local name, deadline = rest:match("^(.-)%s*@(%d%d%d%d%d%d%d%d)$")
             local status = Parser.determineStatus(statusMark)
             currentScrumBacklog = ScrumBacklog:new(name, deadline, status)
-            if currentProductBacklog then
-                table.insert(currentProductBacklog.scrumBacklogs, currentScrumBacklog)
-            end
-        elseif line:match("^%s+%-%s*%[.-%]%s+.+") then
+            table.insert(currentProductBacklog.scrumBacklogs, currentScrumBacklog)
+        elseif currentScrumBacklog and line:match("^%s+%-%s*%[.-%]%s+.+") then
             local statusMark, name = line:match("^%s+%-%s*%[(.-)%]%s*(.+)")
             local status = Parser.determineStatus(statusMark)
             local task = Task:new(name, status)
-            if currentScrumBacklog then
-                currentScrumBacklog:addTask(task)
-            end
+            currentScrumBacklog:addTask(task)
         end
     end
 
-    return project
+    return projects
 end
 
 return Parser

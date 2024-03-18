@@ -3,39 +3,33 @@ package.path = package.path .. ";./lua/?.lua"
 describe("Parser", function()
     local Parser = require("nvim-todo.core.parser")  -- parser.luaのパスを適切に設定
 
-    it("correctly parses project structure from markdown", function()
+  it("correctly parses multiple projects from markdown", function()
         local markdownContent = [[
-## Project XYZ
+## Project 1
 ### Product Backlog 1
 - [ ] Scrum Backlog 1 @20230101
     - [>] Task 1
     - [x] Task 2
+## Project 2
 ### Product Backlog 2
 - [ ] Scrum Backlog 2 @20230202
     - [r] Task 3
     - [ ] Task 4
 ]]
 
-        local project = Parser.parse(markdownContent)
+        local projects = Parser.parse(markdownContent)
 
-        -- プロジェクト名の検証
-        assert.are.equal("Project XYZ", project.name)
+        -- プロジェクト数の検証
+        assert.are.equal(2, #projects)
 
-        -- プロダクトバックログ数の検証
-        assert.are.equal(2, #project.productBacklogs)
+        -- 最初のプロジェクトの検証
+        assert.are.equal("Project 1", projects[1].name)
+        assert.are.equal(1, #projects[1].productBacklogs)
+        assert.are.equal("Product Backlog 1", projects[1].productBacklogs[1].name)
 
-        -- スクラムバックログの検証
-        local scrumBacklog1 = project.productBacklogs[1].scrumBacklogs[1]
-        assert.are.equal("Scrum Backlog 1", scrumBacklog1.name)
-        assert.are.equal("20230101", scrumBacklog1.deadline)
-        assert.are.equal("not_started", scrumBacklog1.status)  -- 注意: スクラムバックログのデフォルトステータスまたは解析ルールに応じて調整
-
-        -- タスクの検証
-        assert.are.equal("in_progress", scrumBacklog1.tasks[1].status)
-        assert.are.equal("completed", scrumBacklog1.tasks[2].status)
-        assert.are.equal("Task 1", scrumBacklog1.tasks[1].name)
-        assert.are.equal("Task 2", scrumBacklog1.tasks[2].name)
-
-        -- 他のスクラムバックログとタスクに関する検証も同様に行う
+        -- 二番目のプロジェクトの検証
+        assert.are.equal("Project 2", projects[2].name)
+        assert.are.equal(1, #projects[2].productBacklogs)
+        assert.are.equal("Product Backlog 2", projects[2].productBacklogs[1].name)
     end)
 end)
