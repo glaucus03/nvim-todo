@@ -1,48 +1,65 @@
--- nvim-todo/lua/nvim-todo/ui/telescope_integration.lua
+package.path = package.path .. ";./lua/?.lua"
+
 local telescope = require('telescope')
 local finders = require('telescope.finders')
 local pickers = require('telescope.pickers')
 local conf = require('telescope.config').values
 local actions = require('telescope.actions')
 local action_state = require('telescope.actions.state')
-local state_manager = require('nvim-todo.core.state_manager')
+local Parser = require("nvim-todo.core.parser")  -- parser.luaのパスを適切に設定
 
--- タスクを検索して表示するTelescopeピッカーの定義
-local function search_tasks(opts)
-    opts = opts or {}
+-- ダミーデータ
+local markdownContent = [[
+## Project 1
+### Product Backlog 1
+- [ ] Scrum Backlog 1 @20230101
+    - [>] Task 1
+    - [x] Task 2
+## Project 2
+### Product Backlog 2
+- [ ] Scrum Backlog 2 @20230202
+    - [r] Task 3
+    - [ ] Task 4
+]]
 
-    -- タスクのリストを取得
-    local tasks = state_manager.filter_tasks_by_status(opts.file_path, "pending") -- ここでフィルタリング条件をカスタマイズ可能
-
-    -- タスクの名前のリストを作成
-    local task_names = {}
-    for _, task in ipairs(tasks) do
-        table.insert(task_names, task.name)
+-- プロジェクトデータを表示するカスタムピッカーの関数
+local function showProjects()
+    local projects = Parser.parse(markdownContent)
+    -- Flatten the project structure for display in Telescope
+    local items = {}
+    for _, project in ipairs(projects) do
+        for _, pb in ipairs(project.productBacklogs) do
+            for _, sb in ipairs(pb.scrumBacklogs) do
+                for _, task in ipairs(sb.tasks) do
+                    table.insert(items, {
+                        project = project.name,
+                        productBacklog = pb.name,
+                        scrumBacklog = sb.name,
+                        task = task.name,
+                        status = task.status,
+                        deadline = sb.deadline
+                    })
+                end
+            end
+        end
     end
 
-    -- Telescopeピッカーの設定
-    pickers.new(opts, {
-        prompt_title = "Search Tasks",
+    pickers.new({}, {
+        prompt_title = "Projects",
         finder = finders.new_table({
-            results = task_names,
+            results = items,
+            entry_maker = function(entry)
+                return {
+                    value = entry,
+                    display = string.format("%s > %s > %s: %s [%s, %s]", entry.project, entry.productBacklog, entry.scrumBacklog, entry.task, entry.status, entry.deadline),
+                    ordinal = entry.project .. " " .. entry.productBacklog .. " " .. entry.scrumBacklog .. " " .. entry.task,
+                }
+            end,
         }),
-        sorter = conf.generic_sorter(opts),
-        attach_mappings = function(prompt_bufnr, map)
-            -- タスクの状態を切り替えるアクションを定義
-            actions.select_default:replace(function()
-                local selection = action_state.get_selected_entry()
-                actions.close(prompt_bufnr)
-                -- 選択されたタスクの状態を変更する処理（例：完了としてマーク）
-                state_manager.update_task_status(opts.file_path, selection.value, "completed")
-                print(selection.value .. " marked as completed")
-            end)
-            return true
-        end,
+        sorter = conf.generic_sorter({}),
     }):find()
 end
 
-return telescope.register_extension({
-    exports = {
-        search_tasks = search_tasks,
-    },
-})
+return {
+    showProjects = showProjects,
+}
